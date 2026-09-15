@@ -509,6 +509,22 @@ def load_master(workbook_path):
         price_headers,
         ["Previous Price", "Previous", "Previous Price Ex VAT (€)"],
     )
+    last_invoice_col = find_column(
+        price_headers,
+        ["Last Invoice", "Invoice", "Last Invoice Number"],
+    )
+    last_updated_col = find_column(
+        price_headers,
+        ["Last Updated", "Updated", "Last Updated Date"],
+    )
+    difference_col = find_column(
+        price_headers,
+        ["Difference", "Price Difference", "Difference (€)"],
+    )
+    change_pct_col = find_column(
+        price_headers,
+        ["Change %", "Change%", "Price Change %", "Change Percentage"],
+    )
 
     if code_col is None or new_price_col is None:
         raise RuntimeError(
@@ -567,6 +583,10 @@ def load_master(workbook_path):
         "unit_col": unit_col,
         "new_price_col": new_price_col,
         "previous_col": previous_col,
+        "last_invoice_col": last_invoice_col,
+        "last_updated_col": last_updated_col,
+        "difference_col": difference_col,
+        "change_pct_col": change_pct_col,
     }
 
 
@@ -610,6 +630,10 @@ def process_invoice(pdf_path, workbook_state):
     review = 0
     details = []
 
+    # Use one stable next-row counter for all restored materials in this run.
+    # This guarantees that multiple deleted materials are restored in one run.
+    next_restore_row = prices_ws.max_row + 1
+
     for item in items:
         code = item["code"]
         invoice_price = to_price(item["unit_price"])
@@ -618,14 +642,55 @@ def process_invoice(pdf_path, workbook_state):
         material = materials.get(key)
 
         if material is None:
-            # Unknown material: do NOT silently create it.
-            # This is safer for real company data.
-            new_materials += 1
-            review += 1
+            # Material was deleted from the workbook, but exists on an invoice.
+            # Restore it automatically using the invoice data.
+            new_row = next_restore_row
+            next_restore_row += 1
+            if cols["code_col"]:
+                prices_ws.cell(new_row, cols["code_col"]).value = code
+            if cols["supplier_col"]:
+                prices_ws.cell(new_row, cols["supplier_col"]).value = SUPPLIER
+            if cols["desc_col"]:
+                prices_ws.cell(new_row, cols["desc_col"]).value = item["description"]
+            if cols["unit_col"]:
+                prices_ws.cell(new_row, cols["unit_col"]).value = item["unit"]
+            prices_ws.cell(new_row, cols["new_price_col"]).value = invoice_price
+            if cols["previous_col"]:
+                prices_ws.cell(new_row, cols["previous_col"]).value = None
+            if cols["difference_col"]:
+                prices_ws.cell(new_row, cols["difference_col"]).value = None
+            if cols["change_pct_col"]:
+                prices_ws.cell(new_row, cols["change_pct_col"]).value = None
+            if cols["last_invoice_col"]:
+                prices_ws.cell(new_row, cols["last_invoice_col"]).value = invoice_number
+            if cols["last_updated_col"]:
+                updated_cell = prices_ws.cell(new_row, cols["last_updated_col"])
+                updated_cell.value = datetime.now()
+                updated_cell.number_format = "dd/mm/yyyy hh:mm"
 
+            # Add it to the in-memory index so a repeated occurrence in another
+            # invoice during the same run is handled as an existing material.
+            materials[key] = {
+                "row": new_row,
+                "code": code,
+                "supplier": SUPPLIER,
+                "description": item["description"],
+                "unit": item["unit"],
+                "new_price_col": cols["new_price_col"],
+                "previous_col": cols["previous_col"],
+            }
+
+            append_history(
+                history_ws, invoice_date, SUPPLIER, code,
+                item["description"], None, invoice_price, invoice_number
+            )
+
+            new_materials += 1
+            updated += 1
             details.append(
-                f"REVIEW | {code} | {item['unit']} | "
-                f"{item['description']} | €{invoice_price:.2f} | UNKNOWN MATERIAL"
+                f"RESTORED | {code} | {item['unit']} | "
+                f"{item['description']} | €{invoice_price:.2f} | "
+                f"ADDED BACK FROM INVOICE"
             )
             continue
 
@@ -645,6 +710,17 @@ def process_invoice(pdf_path, workbook_state):
                 row, cols["unit_col"]
             ).value = item["unit"]
 
+        # The main row always records the invoice currently being processed
+        # as the latest invoice for this material. This keeps Last Invoice
+        # aligned with the current New Price when a later invoice changes it.
+        if cols["last_invoice_col"]:
+            prices_ws.cell(row, cols["last_invoice_col"]).value = invoice_number
+
+        if cols["last_updated_col"]:
+            updated_cell = prices_ws.cell(row, cols["last_updated_col"])
+            updated_cell.value = datetime.now()
+            updated_cell.number_format = "dd/mm/yyyy hh:mm"
+
         if old_price is None:
             prices_ws.cell(
                 row, cols["new_price_col"]
@@ -654,6 +730,10 @@ def process_invoice(pdf_path, workbook_state):
                 prices_ws.cell(
                     row, cols["previous_col"]
                 ).value = None
+            if cols["difference_col"]:
+                prices_ws.cell(row, cols["difference_col"]).value = None
+            if cols["change_pct_col"]:
+                prices_ws.cell(row, cols["change_pct_col"]).value = None
 
             append_history(
                 history_ws,
@@ -690,6 +770,15 @@ def process_invoice(pdf_path, workbook_state):
         prices_ws.cell(
             row, cols["new_price_col"]
         ).value = invoice_price
+
+        difference = round(invoice_price - old_price, 2)
+        change_pct = (difference / old_price) if old_price != 0 else None
+
+        if cols["difference_col"]:
+            prices_ws.cell(row, cols["difference_col"]).value = difference
+        if cols["change_pct_col"]:
+            prices_ws.cell(row, cols["change_pct_col"]).value = change_pct
+            prices_ws.cell(row, cols["change_pct_col"]).number_format = "0.00%"
 
         append_history(
             history_ws,
