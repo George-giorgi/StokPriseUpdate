@@ -4,6 +4,9 @@ import sys
 import shutil
 import csv
 from datetime import datetime
+from email.message import EmailMessage
+import smtplib
+import keyring
 
 import pdfplumber
 from openpyxl import load_workbook
@@ -629,6 +632,7 @@ def process_invoice(pdf_path, workbook_state):
     new_materials = 0
     review = 0
     details = []
+    over_10_changes_local = []
 
     # Use one stable next-row counter for all restored materials in this run.
     # This guarantees that multiple deleted materials are restored in one run.
@@ -774,6 +778,15 @@ def process_invoice(pdf_path, workbook_state):
         difference = round(invoice_price - old_price, 2)
         change_pct = (difference / old_price) if old_price != 0 else None
 
+        if change_pct is not None and abs(change_pct) > 0.10:
+            over_10_changes_local.append({
+                "code": code,
+                "description": item["description"],
+                "old_price": old_price,
+                "new_price": invoice_price,
+                "change_pct": change_pct,
+            })
+
         if cols["difference_col"]:
             prices_ws.cell(row, cols["difference_col"]).value = difference
         if cols["change_pct_col"]:
@@ -808,8 +821,92 @@ def process_invoice(pdf_path, workbook_state):
         "review": review,
         "error": None,
         "details": details,
+        "over_10_changes": over_10_changes_local,
     }
 
+
+
+def send_email_report(pdfs_count, total_items, total_updated, total_unchanged,
+                      total_new, total_review, errors, report_path,
+                      over_10_changes):
+    """Send the completed Chadwicks price-update summary by Gmail."""
+    gmail_user = os.getenv("CHADWICKS_GMAIL_USER")
+    boss_email = os.getenv("CHADWICKS_BOSS_EMAIL")
+
+    if not gmail_user or not boss_email:
+        raise RuntimeError(
+            "Email settings are missing. Make sure CHADWICKS_GMAIL_USER "
+            "and CHADWICKS_BOSS_EMAIL are set."
+        )
+
+    app_password = keyring.get_password(
+        "StokPriseUpdate",
+        "gmail_app_password",
+    )
+
+    if not app_password:
+        raise RuntimeError(
+            "Gmail App Password was not found in Windows Credential Manager."
+        )
+
+    msg = EmailMessage()
+    msg["From"] = gmail_user
+    msg["To"] = boss_email
+    msg["Subject"] = (
+        f"Chadwicks Price Update Report - "
+        f"{datetime.now().strftime('%d/%m/%Y')}"
+    )
+
+    body = (
+        "Hi,\n\n"
+        "The Chadwicks invoice price update has been completed.\n\n"
+        "Report:\n"
+        f"- Invoices processed: {pdfs_count}\n"
+        f"- Materials checked: {total_items}\n"
+        f"- Prices updated: {total_updated}\n"
+        f"- Prices unchanged: {total_unchanged}\n"
+        f"- New/restored materials: {total_new}\n"
+        f"- Needs review: {total_review}\n"
+        f"- Errors: {errors}\n\n"
+        "Materials with price changes over 10%:\n"
+    )
+
+    # Show only the latest >10% price change for each Material ID.
+    latest_over_10 = {}
+    for change in over_10_changes:
+        latest_over_10[str(change["code"])] = change
+
+    if latest_over_10:
+        for change in latest_over_10.values():
+            body += (
+                f"- {change['code']} | {change['description']} | "
+                f"€{change['old_price']:.2f} -> €{change['new_price']:.2f} | "
+                f"{change['change_pct']:+.2%}\n"
+            )
+    else:
+        body += "- None\n"
+
+    body += (
+        "\nThe Excel price file has been updated successfully.\n\n"
+        "Regards,\n"
+        "Giorgi"
+    )
+
+    msg.set_content(body)
+
+    if os.path.isfile(report_path):
+        with open(report_path, "rb") as f:
+            report_data = f.read()
+        msg.add_attachment(
+            report_data,
+            maintype="text",
+            subtype="csv",
+            filename=os.path.basename(report_path),
+        )
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+        smtp.login(gmail_user, app_password)
+        smtp.send_message(msg)
 
 def main():
     if len(sys.argv) < 3:
@@ -855,6 +952,7 @@ def main():
     errors = 0
 
     report_rows = []
+    over_10_changes = []
 
     for idx, pdf_path in enumerate(pdfs, 1):
         print(f"\n[{idx}/{len(pdfs)}] {os.path.basename(pdf_path)}")
@@ -876,6 +974,7 @@ def main():
             total_unchanged += result["unchanged"]
             total_new += result["new"]
             total_review += result["review"]
+            over_10_changes.extend(result.get("over_10_changes", []))
 
             report_rows.append({
                 "File": result["file"],
@@ -922,6 +1021,22 @@ def main():
         )
         writer.writeheader()
         writer.writerows(report_rows)
+
+    try:
+        send_email_report(
+            len(pdfs),
+            total_items,
+            total_updated,
+            total_unchanged,
+            total_new,
+            total_review,
+            errors,
+            report_path,
+            over_10_changes,
+        )
+        print("Email report: SENT")
+    except Exception as exc:
+        print(f"Email report: NOT SENT | {type(exc).__name__}: {exc}")
 
     print("\nFINAL FIXED V7 CLEAN TEST COMPLETE")
     print(f"PDFs found: {len(pdfs)}")
