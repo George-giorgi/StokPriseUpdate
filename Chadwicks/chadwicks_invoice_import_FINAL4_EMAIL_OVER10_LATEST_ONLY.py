@@ -641,7 +641,7 @@ def process_invoice(pdf_path, workbook_state):
     for item in items:
         code = item["code"]
         invoice_price = to_price(item["unit_price"])
-        key = (SUPPLIER.upper(), code)
+        key = (SUPPLIER.upper(), normalise_code(code))
 
         material = materials.get(key)
 

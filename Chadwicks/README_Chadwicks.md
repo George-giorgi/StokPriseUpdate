@@ -2,11 +2,11 @@
 
 ## What it does
 
-This Python script reads Chadwicks invoice PDFs from `Full_Invoices` and updates the Excel price file.
+This Python script reads Chadwicks invoice PDFs from `Chadwicks_Full_Invoices` and updates the Excel price file.
 
 **Workflow:**
 
-New invoices → `Full_Invoices` → Run script → Excel updated → Email report sent
+New invoices → `Chadwicks_Full_Invoices` → Run script → Excel updated → Email report sent
 
 The script can:
 - Read one or many Chadwicks invoices.
@@ -24,7 +24,7 @@ The script can:
 
 ## Important files and folders
 
-### `Full_Invoices\`
+### `Chadwicks_Full_Invoices\`
 Temporary input folder.
 
 Put **only the new invoice PDFs** here.
@@ -41,8 +41,8 @@ The current working script.
 
 This is the script to use for normal processing.
 
-### `CHAD_Invoices\`
-Older/separate invoice folder. The normal command uses `Full_Invoices`.
+### `Chadwicks_Old_Invoices\`
+Older/separate invoice folder. The normal command uses `Chadwicks_Full_Invoices`.
 
 ### `.gitignore`
 Helps prevent private invoice files from being uploaded to GitHub.
@@ -61,12 +61,12 @@ Open **CMD**.
 cd "C:\Users\MauriceSweeney(Brusn\StokPriseUpdate\StokPriseUpdate"
 ```
 
-## 3. Put new invoices into `Full_Invoices`
+## 3. Put new invoices into `Chadwicks_Full_Invoices`
 
 Example:
 
 ```text
-Full_Invoices\
+Chadwicks_Full_Invoices\
     SX236100.pdf
     SX236101.pdf
     SX236102.pdf
@@ -77,7 +77,7 @@ You can process one invoice or many at the same time.
 ## 4. Run the script
 
 ```cmd
-python Chadwicks\chadwicks_invoice_import_FINAL4_EMAIL_OVER10_LATEST_ONLY.py "Chadwicks/Full_Invoices" "Chadwicks/Chadwicks_FULL_INVOICES_TEST_NO_MATERIAL.xlsx"
+python Chadwicks\chadwicks_invoice_import_FINAL4_EMAIL_OVER10_LATEST_ONLY.py "Chadwicks/Chadwicks_Full_Invoices" "Chadwicks/Chadwicks_FULL_INVOICES_TEST_NO_MATERIAL.xlsx"
 ```
 
 ## 5. Check the result
@@ -102,8 +102,8 @@ Then check the Excel workbook and the email report.
 
 # Normal day-to-day workflow
 
-1. Empty old processed PDFs from `Full_Invoices`.
-2. Drop the new invoice PDF/PDFs into `Full_Invoices`.
+1. Empty old processed PDFs from `Chadwicks_Full_Invoices`.
+2. Drop the new invoice PDF/PDFs into `Chadwicks_Full_Invoices`.
 3. Open CMD.
 4. Run:
 
@@ -114,11 +114,11 @@ cd "C:\Users\MauriceSweeney(Brusn\StokPriseUpdate\StokPriseUpdate"
 5. Run:
 
 ```cmd
-python Chadwicks\chadwicks_invoice_import_FINAL4_EMAIL_OVER10_LATEST_ONLY.py "Chadwicks/Full_Invoices" "Chadwicks/Chadwicks_FULL_INVOICES_TEST_NO_MATERIAL.xlsx"
+python Chadwicks\chadwicks_invoice_import_FINAL4_EMAIL_OVER10_LATEST_ONLY.py "Chadwicks/Chadwicks_Full_Invoices" "Chadwicks/Chadwicks_FULL_INVOICES_TEST_NO_MATERIAL.xlsx"
 ```
 
 6. Check Excel and the email report.
-7. After confirming successful processing, empty `Full_Invoices` ready for the next batch.
+7. After confirming successful processing, empty `Chadwicks_Full_Invoices` ready for the next batch.
 
 ---
 
