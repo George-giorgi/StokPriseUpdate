@@ -41,7 +41,7 @@ cd "C:\Users\MauriceSweeney(Brusn\StokPriseUpdate\StokPriseUpdate"
 4. Run:
 
 ```cmd
-python value_invoice_import.py "Value/Value_new_Invoices" "Value/Value_MATERIAL_PRICES.xlsx"
+python Value\value_invoice_import.py "Value/Value_new_Invoices" "Value/Value_MATERIAL_PRICES.xlsx"
 ```
 
 If the Value workbook does not exist, the script creates an empty Value workbook automatically.
