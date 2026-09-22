@@ -829,7 +829,7 @@ def process_invoice(pdf_path, workbook_state):
 def send_email_report(pdfs_count, total_items, total_updated, total_unchanged,
                       total_new, total_review, errors, report_path,
                       over_10_changes):
-    """Send the completed Chadwicks price-update summary by Gmail."""
+    """Send the completed supplier price-update summary by Gmail."""
     gmail_user = os.getenv("CHADWICKS_GMAIL_USER")
     boss_email = os.getenv("CHADWICKS_BOSS_EMAIL")
 
@@ -853,13 +853,13 @@ def send_email_report(pdfs_count, total_items, total_updated, total_unchanged,
     msg["From"] = gmail_user
     msg["To"] = boss_email
     msg["Subject"] = (
-        f"Chadwicks Price Update Report - "
+        f"{SUPPLIER} Price Update Report - "
         f"{datetime.now().strftime('%d/%m/%Y')}"
     )
 
     body = (
         "Hi,\n\n"
-        "The Chadwicks invoice price update has been completed.\n\n"
+        f"The {SUPPLIER} invoice price update has been completed.\n\n"
         "Report:\n"
         f"- Invoices processed: {pdfs_count}\n"
         f"- Materials checked: {total_items}\n"
