@@ -1,76 +1,156 @@
 from pathlib import Path
 import csv
+import importlib.util
 import shutil
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-import importlib.util
 
-ROOT = Path(__file__).resolve().parent.parent
-CHADWICKS_ENGINE = ROOT / 'Chadwicks' / 'chadwicks_invoice_import_FINAL4_EMAIL_OVER10_LATEST_ONLY.py'
-TEMPLATE_WORKBOOK = ROOT / 'Chadwicks' / 'Chadwicks_FULL_INVOICES_TEST_NO_MATERIAL.xlsx'
-DEFAULT_TEST_FOLDER = ROOT / 'Test' / 'Test_new_Invoices'
-DEFAULT_WORKBOOK = ROOT / 'Test' / 'Test_MATERIAL_PRICES.xlsx'
+ROOT = Path(__file__).resolve().parent
+
+SUPPLIERS = {
+    'Airpacks': {
+        'folder': 'Airpacks',
+        'new_invoices': 'Airpacks_new_Invoices',
+        'workbook': 'Airpacks_MATERIAL_PRICES.xlsx',
+        'parser': 'Airpacks/airpacks_invoice_import.py',
+    },
+    'Archers': {
+        'folder': 'Archers',
+        'new_invoices': 'Archers_new_Invoices',
+        'workbook': 'Archers_MATERIAL_PRICES.xlsx',
+        'parser': 'Archers/archers_invoice_import.py',
+    },
+    'Chadwicks': {
+        'folder': 'Chadwicks',
+        'new_invoices': 'Chadwicks_new_Invoices',
+        'workbook': 'Chadwicks_FULL_INVOICES_TEST_NO_MATERIAL.xlsx',
+        'parser': 'Chadwicks/chadwicks_invoice_import_FINAL4_EMAIL_OVER10_LATEST_ONLY.py',
+    },
+    'Electrical': {
+        'folder': 'Electrical',
+        'new_invoices': 'Electrical_new_Invoices',
+        'workbook': 'Electrical_MATERIAL_PRICES.xlsx',
+        'parser': 'Electrical/electrical_invoice_import.py',
+    },
+    'Harlow': {
+        'folder': 'Harlow',
+        'new_invoices': 'Harlow_new_Invoices',
+        'workbook': 'Harlow_MATERIAL_PRICES.xlsx',
+        'parser': 'Harlow/harlow_invoice_import.py',
+    },
+    'Icon': {
+        'folder': 'Icon',
+        'new_invoices': 'Icon_new_Invoices',
+        'workbook': 'Icon_MATERIAL_PRICES.xlsx',
+        'parser': 'Icon/icon_invoice_import.py',
+    },
+    'KMS': {
+        'folder': 'KMS',
+        'new_invoices': 'KMS_new_Invoices',
+        'workbook': 'KMS_MATERIAL_PRICES.xlsx',
+        'parser': 'KMS/kms_invoice_import.py',
+    },
+    'Southeren': {
+        'folder': 'Southeren',
+        'new_invoices': 'Southeren_new_Invoices',
+        'workbook': 'Southern_MATERIAL_PRICES.xlsx',
+        'parser': 'Southeren/southern_invoice_import.py',
+    },
+    'Test': {
+        'folder': 'Test',
+        'new_invoices': 'Test_new_Invoices',
+        'workbook': 'Test_MATERIAL_PRICES.xlsx',
+        'parser': 'Test/test_clickable_invoice.py',
+    },
+    'Value': {
+        'folder': 'Value',
+        'new_invoices': 'Value_new_Invoices',
+        'workbook': 'Value_MATERIAL_PRICES.xlsx',
+        'parser': 'Value/value_invoice_import.py',
+    },
+}
 
 
-def load_engine():
-    spec = importlib.util.spec_from_file_location('test_engine', CHADWICKS_ENGINE)
+def supplier_names():
+    return sorted(SUPPLIERS)
+
+
+def supplier_root(supplier_name: str) -> Path:
+    config = SUPPLIERS[supplier_name]
+    return ROOT / config['folder']
+
+
+def default_invoice_folder(supplier_name: str) -> Path:
+    config = SUPPLIERS[supplier_name]
+    return supplier_root(supplier_name) / config['new_invoices']
+
+
+def default_workbook(supplier_name: str) -> Path:
+    config = SUPPLIERS[supplier_name]
+    return supplier_root(supplier_name) / config['workbook']
+
+
+def load_supplier_module(supplier_name: str):
+    config = SUPPLIERS[supplier_name]
+    parser_path = ROOT / config['parser']
+    if not parser_path.exists():
+        raise FileNotFoundError(f'Parser not found for {supplier_name}: {parser_path}')
+
+    spec = importlib.util.spec_from_file_location(f'{supplier_name}_engine', parser_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    module.SUPPLIER = 'Test'
+    if hasattr(module, 'engine'):
+        module.engine.SUPPLIER = supplier_name
     return module
 
 
-def ensure_workbook(workbook_path: Path):
+def ensure_workbook(workbook_path: Path, supplier_name: str):
     workbook_path.parent.mkdir(parents=True, exist_ok=True)
-    if not workbook_path.exists() and TEMPLATE_WORKBOOK.exists():
-        shutil.copy2(TEMPLATE_WORKBOOK, workbook_path)
+    template_path = ROOT / 'Chadwicks' / 'Chadwicks_FULL_INVOICES_TEST_NO_MATERIAL.xlsx'
+    if not workbook_path.exists() and template_path.exists():
+        shutil.copy2(template_path, workbook_path)
     return workbook_path
 
 
-def validate_test_folder(folder: Path):
-    project_root = ROOT
-    test_root = project_root / 'Test'
+def validate_supplier_folder(folder: Path, supplier_name: str):
+    expected = supplier_root(supplier_name).resolve()
     resolved = folder.resolve()
-    allowed_prefix = test_root.resolve()
-
-    if resolved == allowed_prefix or allowed_prefix in resolved.parents:
+    if resolved == expected or expected in resolved.parents:
         return
 
     raise ValueError(
-        'Wrong supplier folder selected.\n\n'
-        f'This Test launcher only accepts folders inside: {test_root}\n'
-        f'You selected: {folder}\n\n'
-        'Please choose a folder from the Test supplier only, not another supplier folder such as Harlow, KMS, Icon, or Chadwicks.'
+        f'Wrong supplier folder selected.\n\nThis launcher is for {supplier_name}.\n'
+        f'Please choose a folder inside: {expected}\nYou selected: {folder}'
     )
 
 
-def run_processing(invoice_folder: str, workbook_path: str):
+def run_processing(supplier_name: str, invoice_folder: str, workbook_path: str):
+    supplier = supplier_name
     folder = Path(invoice_folder)
     workbook = Path(workbook_path)
 
     if not folder.exists() or not folder.is_dir():
         raise FileNotFoundError(f'Invoice folder not found: {folder}')
 
-    validate_test_folder(folder)
+    validate_supplier_folder(folder, supplier)
 
-    pdfs = sorted(
-        [p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == '.pdf']
-    )
+    pdfs = sorted([p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == '.pdf'])
     if not pdfs:
         raise ValueError(
             f'No PDF invoice files were found in this folder:\n{folder}\n\n'
-            'Please choose the folder that contains the actual invoice PDFs.'
+            'Please choose the correct invoice folder.'
         )
 
-    ensure_workbook(workbook)
+    ensure_workbook(workbook, supplier)
     if not workbook.exists():
         raise FileNotFoundError(f'Workbook not found or could not be created: {workbook}')
 
-    engine = load_engine()
+    module = load_supplier_module(supplier)
+    engine = module.engine if hasattr(module, 'engine') else module
     workbook_state = engine.load_master(str(workbook))
 
-    # Keep the same workbook file; update prices in-place.
     backup_path = workbook.with_name(workbook.stem + '_BEFORE_FINAL_FIXED_V7_CLEAN.xlsx')
     if not backup_path.exists():
         shutil.copy2(workbook, backup_path)
@@ -169,38 +249,39 @@ def run_processing(invoice_folder: str, workbook_path: str):
     }
 
 
-def pick_folder_and_run():
+def pick_folder_and_run(supplier_name: str):
+    supplier = supplier_name
     root = tk.Tk()
     root.withdraw()
     root.attributes('-topmost', True)
 
     folder = filedialog.askdirectory(
-        initialdir=str(DEFAULT_TEST_FOLDER),
-        title='Select the invoice folder',
+        initialdir=str(default_invoice_folder(supplier)),
+        title=f'Select {supplier} invoice folder',
     )
     if not folder:
         return
 
     try:
-        validate_test_folder(Path(folder))
+        validate_supplier_folder(Path(folder), supplier)
     except ValueError as exc:
         messagebox.showerror('Wrong supplier folder', str(exc))
         return
 
-    workbook = str(DEFAULT_WORKBOOK)
-    if not DEFAULT_WORKBOOK.exists():
+    workbook = str(default_workbook(supplier))
+    if not default_workbook(supplier).exists():
         workbook = filedialog.asksaveasfilename(
-            initialfile='Test_MATERIAL_PRICES.xlsx',
+            initialfile=default_workbook(supplier).name,
             defaultextension='.xlsx',
-            initialdir=str(ROOT / 'Test'),
-            title='Choose workbook name and location',
+            initialdir=str(supplier_root(supplier)),
+            title=f'Choose workbook for {supplier}',
         )
         if not workbook:
-            workbook = str(DEFAULT_WORKBOOK)
+            workbook = str(default_workbook(supplier))
 
     loading = tk.Toplevel(root)
-    loading.title('Processing invoices')
-    loading.geometry('320x110')
+    loading.title(f'Processing {supplier} invoices')
+    loading.geometry('340x110')
     loading.resizable(False, False)
     loading.attributes('-topmost', True)
 
@@ -217,8 +298,8 @@ def pick_folder_and_run():
 
     def worker():
         try:
-            result.update(run_processing(folder, workbook))
-        except Exception as exc:  # pragma: no cover - GUI error path
+            result.update(run_processing(supplier, folder, workbook))
+        except Exception as exc:
             error['value'] = exc
         finally:
             loading.after(0, loading.destroy)
@@ -248,4 +329,7 @@ def pick_folder_and_run():
 
 
 if __name__ == '__main__':
-    pick_folder_and_run()
+    supplier_name = sys.argv[1] if len(sys.argv) > 1 else 'Test'
+    if supplier_name not in SUPPLIERS:
+        raise SystemExit(f'Unknown supplier: {supplier_name}. Allowed: {supplier_names()}')
+    pick_folder_and_run(supplier_name)
