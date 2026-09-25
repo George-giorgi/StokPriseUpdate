@@ -4,8 +4,8 @@ Archers/Archers_new_Invoices/
 Archers/Archers_full_Invoices/
 Value/Value_full_Invoices/
 Value/Value_new_Invoices/
-Airpacks/Airpacks_full_Invoices/*
-Airpacks/Airpacks_new_Invoices/*
+!Airpacks/Airpacks_full_Invoices/.gitkeep
+!Airpacks/Airpacks_new_Invoices/.gitkeep
 Electrical/Electrical_full_Invoices/
 Electrical/Electrical_new_Invoices/
 KMS/KMS_full_Invoices/
